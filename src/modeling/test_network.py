@@ -2,8 +2,12 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error
+import keras.backend as K
 from keras import Model, Sequential
-from keras.layers import Dense
+from keras.layers import Dense, Input, concatenate
+from src.utility.concrete_dropout import ConcreteDropout
+from src.preparation.generate_data import generate_sine_data
+from src.preparation.load_data import load_raw_data
 
 
 def train_test_split(data, n_test):
@@ -25,17 +29,33 @@ def series_to_supervised(data, n_in=100, n_out=1):
 def model_fit(train, config):
     # unpack config
     n_input, n_nodes, n_epochs, n_batch = config
+    l = 1e-4
+    wd = l ** 2. / len(train)
+    dd = 2. / len(train)
     # prepare data
     data = series_to_supervised(train, n_in=n_input)
     train_x, train_y = data[:, :-1], data[:, -1]
     # define model
-    model = Sequential()
-    model.add(Dense(n_nodes, activation='relu', input_dim=n_input))
-    model.add(Dense(1))
-    model.compile(loss='mse', optimizer='adam')
-    # fit
-    model.fit(train_x, train_y, epochs=n_epochs, batch_size=n_batch, verbose=0)
-    return model
+    inp = Input(shape=(n_input,))
+    x = ConcreteDropout(Dense(n_nodes, activation='relu'), weight_regularizer=wd, dropout_regularizer=dd)(x)
+    x = Dense(1)(x)
+    mean = ConcreteDropout(Dense(1), weight_regularizer=wd, dropout_regularizer=dd)(x)
+    log_var = ConcreteDropout(Dense(1), weight_regularizer=wd, dropout_regularizer=dd)(x)
+    out = concatenate([mean, log_var])
+    model = Model(inp, out)
+
+    def heteroscedastic_loss(true, pred):
+        mean = pred[:, :D]
+        log_var = pred[:, D:]
+        precision = K.exp(-log_var)
+        return K.sum(precision * (true - mean) ** 2. + log_var, -1)
+
+    model.compile(optimizer='adam', loss=heteroscedastic_loss)
+    assert len(model.layers[1].trainable_weights) == 3  # kernel, bias, and dropout prob
+    assert len(model.losses) == 5  # a loss for each Concrete Dropout layer
+    hist = model.fit(train_x, train_y, nb_epoch=n_epochs, batch_size=n_batch, verbose=0)
+    loss = hist.history['loss'][-1]
+    return model, -0.5*loss
 
 
 # forecast with a pre-fit model
@@ -71,6 +91,12 @@ def walk_forward_validation(data, n_test, cfg):
     # estimate prediction error
     error = measure_rmse(test, predictions)
     print(' > %.3f' % error)
+
+    # plot predictions
+    x = np.linspace(1, len(np.concatenate((train, predictions), axis=None)), len(np.concatenate((train, predictions), axis=None)))
+    plt.plot(x, np.concatenate((train, test), axis=None))
+    plt.plot(x, np.concatenate((train, predictions), axis=None))
+    plt.show()
     return error
 
 
@@ -90,9 +116,15 @@ def summarize_scores(name, scores):
     plt.show()
 
 
-df = pd.read_csv("data//M_train//Daily-train.csv", header=0, index_col=0)
+df = generate_sine_data()
+# df = load_raw_data()
 df.dropna(axis=1, how='all', inplace=True)
-df = df[['V3']].values
+plt.plot(df[['x']], df[['y']])
+plt.show()
+
+df = df[['y']].values
+
+# df = df[['V3']].values
 # data split
 n_test = 12
 # define config
