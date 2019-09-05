@@ -115,6 +115,7 @@ class ConcreteDropout(Layer):
 
                                     training=training)
 
+
 class ConcreteDropout_old(Wrapper):
     """This wrapper allows to learn the dropout probability for any given input Dense layer.
     ```python
