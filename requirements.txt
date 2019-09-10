@@ -3,3 +3,5 @@ pandas
 sklearn
 tensorflow
 keras
+pydataset
+pyyaml
