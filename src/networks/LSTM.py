@@ -19,7 +19,7 @@ def build_model(train_x, train_y, cfg):
     x = Dense(1)(x)
 
     model = Model(inp, x, name=cfg['model'])
-    es = EarlyStopping(monitor='val_loss', mode='min', verbose=0, patience=20)
+    es = EarlyStopping(monitor='val_loss', mode='min', verbose=0, patience=cfg['patience'])
     model.compile(optimizer='adam', loss='mse')
     model.summary()
     model.fit(train_x, train_y, epochs=cfg['number_of_epochs'], batch_size=cfg['batch_size'], callbacks=[es],

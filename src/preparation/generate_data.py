@@ -4,7 +4,7 @@ import pandas as pd
 
 def generate_sine_data(xmin=0, xmax=300, num_points=1500):
     x_data = np.linspace(xmin, xmax, num_points)
-    y_data = np.sin(x_data) + np.random.normal(0, 0.1, num_points)
+    y_data = np.sin(x_data) + np.random.normal(0, 0.2, num_points)
     return pd.DataFrame({'x': x_data, 'y': y_data})
 
 
@@ -21,7 +21,7 @@ def generate_coefficients(p):
     return true_theta
 
 
-def generate_arp_data(p=2, burn_in=600, num_points=500):
+def generate_arp_data(p=2, burn_in=600, num_points=2000):
     arp_sequence = np.zeros(p+num_points+burn_in)
     arp_sequence[:p] = np.random.normal(0, 0.2, p)
     coefficients = generate_coefficients(p)

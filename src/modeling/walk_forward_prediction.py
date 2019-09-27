@@ -5,35 +5,9 @@ from sklearn.metrics import mean_squared_error
 from src.processing.scale import scale_data
 from src.processing.transform_to_stationary import difference_transformation, inverse_difference_transformation
 from src.modeling.config.open_config import load_config_file
-from src.preparation.generate_data import generate_sine_data, generate_arp_data
-from src.preparation.load_data import load_raw_data
-from src.networks import autoencoder, CNN, LSTM, ResNet
-from pydataset import data
+from src.preparation.load_data import load_data
+from src.networks.train_model import train_model
 from keras import backend as K
-
-
-
-def load_data(cfg):
-    if cfg['data_source'].lower() == 'm4':
-        df = load_raw_data()
-        df.dropna(axis=1, how='all', inplace=True)
-        # df = df[['V3']].values
-    elif cfg['data_source'].lower() == 'airpassengers':
-        df = data('AirPassengers')
-        df.dropna(axis=1, how='all', inplace=True)
-        df = df[['AirPassengers']].values
-    elif cfg['data_source'].lower() == 'sine_data':
-        df = generate_sine_data()
-        df.dropna(axis=1, how='all', inplace=True)
-        df = df[['y']].values
-    elif cfg['data_source'].lower() == 'arp':
-        df = generate_arp_data(p=5)
-        df.dropna(axis=1, how='all', inplace=True)
-        df = df[['y']].values
-    else:
-        ImportError('Model', cfg['model'], 'is not a data source.')
-        df = None
-    return df
 
 
 def plot_predictions(df, mean, quantile_80, quantile_95):
@@ -58,7 +32,7 @@ def train_test_split(df, test_split=0.2):
 
 # split a univariate sequence into samples
 def split_sequence(sequence, cfg):
-    X, y = list(), list()
+    x, y = list(), list()
     for i in range(len(sequence)):
         # find the end of this pattern
         end_ix = i + cfg['sequence_length']
@@ -67,9 +41,9 @@ def split_sequence(sequence, cfg):
             break
         # gather input and output parts of the pattern
         seq_x, seq_y = sequence[i:end_ix], sequence[end_ix]
-        X.append(seq_x)
+        x.append(seq_x)
         y.append(seq_y)
-    return np.array(X), np.array(y)
+    return np.array(x), np.array(y)
 
 
 # forecast with a pre-fit model
@@ -120,21 +94,6 @@ def measure_rmse(actual, predicted):
     return np.sqrt(mean_squared_error(actual, predicted))
 
 
-def train_model(train_x, train_y, cfg):
-    if cfg['model'].lower() == 'resnet':
-        model = ResNet.build_model(train_x, train_y, cfg)
-    elif cfg['model'].lower() == 'cnn':
-        model = CNN.build_model(train_x, train_y, cfg)
-    elif cfg['model'].lower() == 'lstm':
-        model = LSTM.build_model(train_x, train_y, cfg)
-    elif cfg['model'].lower() == 'autoencoder':
-        model = autoencoder.build_model(train_x, train_y, cfg)
-    else:
-        ModuleNotFoundError('Model', cfg['model'], 'does not exist')
-        model = None
-    return model
-
-
 # walk-forward validation for univariate data
 def walk_forward_validation(df, cfg):
     # Split data in train, val and test set
@@ -171,8 +130,8 @@ def walk_forward_validation(df, cfg):
     coverage_95pi = compute_coverage(upper_limits=quantile_95[1],
                                      lower_limits=quantile_95[0],
                                      actual_values=test)
-    print('80%-prediction interval coverage: ', coverage_80pi)
-    print('95%-prediction interval coverage: ', coverage_95pi)
+    #print('80%-prediction interval coverage: ', coverage_80pi)
+    #print('95%-prediction interval coverage: ', coverage_95pi)
 
     coverage_80pi = compute_coverage(upper_limits=mc_mean+1.28*total_uncertainty,
                                      lower_limits=mc_mean-1.28*total_uncertainty,
@@ -180,10 +139,10 @@ def walk_forward_validation(df, cfg):
     coverage_95pi = compute_coverage(upper_limits=mc_mean+1.96*total_uncertainty,
                                      lower_limits=mc_mean-1.96*total_uncertainty,
                                      actual_values=test)
-    print('80%-prediction interval coverage: ', coverage_80pi)
-    print('95%-prediction interval coverage: ', coverage_95pi)
+    #print('80%-prediction interval coverage: ', coverage_80pi)
+    #print('95%-prediction interval coverage: ', coverage_95pi)
 
-    return prediction_sequence, mc_mean, total_uncertainty, quantile_80, quantile_95
+    return prediction_sequence, mc_mean, total_uncertainty, quantile_80, quantile_95, test
 
 
 def main():
@@ -194,15 +153,15 @@ def main():
 
     if cfg['differencing']:
         df_difference = difference_transformation(df)
-        predictions_difference, mc_mean_difference, total_uncertainty_difference, difference_quantile_80, difference_quantile_95 = walk_forward_validation(df_difference, cfg)
+        predictions_difference, mc_mean_difference, total_uncertainty_difference, difference_quantile_80, difference_quantile_95, _ = walk_forward_validation(df_difference, cfg)
         predictions = inverse_difference_transformation(df, predictions_difference)
         mc_mean = inverse_difference_transformation(df, mc_mean_difference)
         total_uncertainty = inverse_difference_transformation(df, total_uncertainty_difference)
-        quantile_80 = inverse_difference_transformation(df, difference_quantile_80)
-        quantile_95 = inverse_difference_transformation(df, difference_quantile_95)
+        quantile_80 = [inverse_difference_transformation(df, difference_quantile_80[0]), inverse_difference_transformation(df, difference_quantile_80[1])]
+        quantile_95 = [inverse_difference_transformation(df, difference_quantile_95[0]), inverse_difference_transformation(df, difference_quantile_95[1])]
 
     else:
-        predictions, mc_mean, total_uncertainty, quantile_80, quantile_95 = walk_forward_validation(df, cfg)
+        predictions, mc_mean, total_uncertainty, quantile_80, quantile_95, _ = walk_forward_validation(df, cfg)
 
     # predictions, mc_mean, total_uncertainty, quantile_80, quantile_95 = walk_forward_validation(df, cfg)
 
