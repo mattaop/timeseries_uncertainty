@@ -10,19 +10,20 @@ from src.networks.train_model import train_model
 from keras import backend as K
 
 
-def plot_predictions(df, mean, quantile_80, quantile_95):
+def plot_predictions(df, mean, quantile_80, quantile_95, cfg):
     x_data = np.linspace(1, len(df), len(df))
-    x_predictions = np.linspace(len(df) - len(mean) + 1, len(df), len(mean))
-    plt.figure()
-    plt.title("Time Series Forecasting Multi-step")
-    plt.plot(x_data, df, label='Data')
-    plt.plot(x_predictions, mean, label='Predictions')
-    plt.fill_between(x_predictions, quantile_80[0], quantile_80[1],
-                     alpha=0.5, edgecolor='#CC4F1B', facecolor='#FF9848', label='80%-PI')
-    plt.fill_between(x_predictions, quantile_95[0], quantile_95[1],
-                     alpha=0.2, edgecolor='#CC4F1B', facecolor='#FF9848', label='95%-PI')
-    plt.legend()
-    plt.show()
+    for i in range(cfg['forecasting_horizon']):
+        x_predictions = np.linspace(len(df) - len(mean[:, i]) + 1+i, len(df)+i, len(mean[:, i]))
+        plt.figure()
+        plt.title("Time Series Forecasting Multi-step")
+        plt.plot(x_data, df, label='Data')
+        plt.plot(x_predictions, mean[:, i], label='Predictions')
+        plt.fill_between(x_predictions, quantile_80[0, :, i], quantile_80[1, :, i],
+                         alpha=0.5, edgecolor='#CC4F1B', facecolor='#FF9848', label='80%-PI')
+        plt.fill_between(x_predictions, quantile_95[0, :, i], quantile_95[1, :, i],
+                         alpha=0.2, edgecolor='#CC4F1B', facecolor='#FF9848', label='95%-PI')
+        plt.legend()
+        plt.show()
 
 
 def train_test_split(df, test_split=0.2):
@@ -36,11 +37,12 @@ def split_sequence(sequence, cfg):
     for i in range(len(sequence)):
         # find the end of this pattern
         end_ix = i + cfg['sequence_length']
+        out_end_ix = end_ix + cfg['forecasting_horizon']
         # check if we are beyond the sequence
-        if end_ix > len(sequence) - 1:
+        if out_end_ix > len(sequence):
             break
         # gather input and output parts of the pattern
-        seq_x, seq_y = sequence[i:end_ix], sequence[end_ix]
+        seq_x, seq_y = sequence[i:end_ix], sequence[end_ix:out_end_ix]
         x.append(seq_x)
         y.append(seq_y)
     return np.array(x), np.array(y)
@@ -61,7 +63,7 @@ def forecast(model, history, cfg, use_dropout=True):
 
 
 def monte_carlo_forecast(train_and_val, test, model, cfg):
-    prediction_sequence = np.zeros([cfg['number_of_mc_forward_passes'], len(test)])
+    prediction_sequence = np.zeros([cfg['number_of_mc_forward_passes'], len(test), cfg['forecasting_horizon']])
     func = K.function([model.layers[0].input, K.learning_phase()], [model.layers[-1].output])
     # Number of MC samples
     for j in range(cfg['number_of_mc_forward_passes']):
@@ -74,7 +76,7 @@ def monte_carlo_forecast(train_and_val, test, model, cfg):
             mc_sample = func([x_input, 1])[0]
             # store forecast in list of predictions
             if cfg['multi_step_prediction']:
-                history.append(mc_sample)
+                history.append(mc_sample[0, 0])
             else:
                 history.append(test[i])
             prediction_sequence[j, i] = mc_sample
@@ -102,28 +104,34 @@ def walk_forward_validation(df, cfg):
 
     # Split training data in sequences
     train_x, train_y = split_sequence(train, cfg)
+    train_x = train_x.reshape((train_x.shape[0], train_x.shape[1], 1))
+    train_y = train_y.reshape((train_y.shape[0], train_y.shape[1]))
     model = train_model(train_x, train_y, cfg)
 
     # Compute inherent noise on validation set
     history = [x for x in train]
-    y_hat = np.zeros([len(val)])
+    y_hat = np.zeros([len(val), train_y.shape[1]])
     for i in range(len(val)):
         x_input = np.array(history[-cfg['sequence_length']:]).reshape((1, cfg['sequence_length'], 1))
         y_hat[i] = model.predict(x_input)[0]
         history.append(val[i])
-    inherent_noise = measure_rmse(val, y_hat)
+    inherent_noise = np.zeros(cfg['forecasting_horizon'])
+    for i in range(cfg['forecasting_horizon']):
+        inherent_noise[i] = measure_rmse(val[i:], y_hat[:-i or None, 0])
 
     prediction_sequence = monte_carlo_forecast(train_and_val, test, model, cfg)
-    mc_mean = prediction_sequence.mean(axis=0)
-    mc_uncertainty = prediction_sequence.std(axis=0)
-
+    mc_mean = np.zeros([prediction_sequence.shape[1], prediction_sequence.shape[2]])
+    mc_uncertainty = np.zeros([prediction_sequence.shape[1], prediction_sequence.shape[2]])
+    for i in range(cfg['forecasting_horizon']):
+        mc_mean[:, i] = prediction_sequence[:, :, i].mean(axis=0)
+        mc_uncertainty[:, i] = prediction_sequence[:, :, i].std(axis=0)
     total_uncertainty = np.sqrt(inherent_noise**2 + mc_uncertainty**2)
-    print("Noise_levels:total, mc, inherent noise: ", total_uncertainty, mc_uncertainty, inherent_noise)
+
     # estimate prediction error
-    error = measure_rmse(test, mc_mean)
-    print(' > %.3f' % error)
-    quantile_80 = [np.quantile(prediction_sequence, 0.10, axis=0), np.quantile(prediction_sequence, 0.90, axis=0)]
-    quantile_95 = [np.quantile(prediction_sequence, 0.025, axis=0), np.quantile(prediction_sequence, 0.975, axis=0)]
+    # error = measure_rmse(test, mc_mean)
+    # print(' > %.3f' % error)
+    quantile_80 = [np.quantile(prediction_sequence[:, :, 0], 0.10, axis=0), np.quantile(prediction_sequence[:, :, 0], 0.90, axis=0)]
+    quantile_95 = [np.quantile(prediction_sequence[:, :, 0], 0.025, axis=0), np.quantile(prediction_sequence[:, :, 0], 0.975, axis=0)]
     coverage_80pi = compute_coverage(upper_limits=quantile_80[1],
                                      lower_limits=quantile_80[0],
                                      actual_values=test)
@@ -132,16 +140,15 @@ def walk_forward_validation(df, cfg):
                                      actual_values=test)
     #print('80%-prediction interval coverage: ', coverage_80pi)
     #print('95%-prediction interval coverage: ', coverage_95pi)
-
-    coverage_80pi = compute_coverage(upper_limits=mc_mean+1.28*total_uncertainty,
-                                     lower_limits=mc_mean-1.28*total_uncertainty,
-                                     actual_values=test)
-    coverage_95pi = compute_coverage(upper_limits=mc_mean+1.96*total_uncertainty,
-                                     lower_limits=mc_mean-1.96*total_uncertainty,
-                                     actual_values=test)
-    #print('80%-prediction interval coverage: ', coverage_80pi)
-    #print('95%-prediction interval coverage: ', coverage_95pi)
-
+    for i in range(cfg['forecasting_horizon']):
+        coverage_80pi = compute_coverage(upper_limits=mc_mean[:, i]+1.28*total_uncertainty[:, i],
+                                         lower_limits=mc_mean[:, i]-1.28*total_uncertainty[:, i],
+                                         actual_values=test)
+        coverage_95pi = compute_coverage(upper_limits=mc_mean[:, i]+1.96*total_uncertainty[:, i],
+                                         lower_limits=mc_mean[:, i]-1.96*total_uncertainty[:, i],
+                                         actual_values=test)
+        # print('80%-prediction interval coverage: ', i, coverage_80pi)
+        # print('95%-prediction interval coverage: ', i, coverage_95pi)
     return prediction_sequence, mc_mean, total_uncertainty, quantile_80, quantile_95, test
 
 
@@ -165,9 +172,9 @@ def main():
 
     # predictions, mc_mean, total_uncertainty, quantile_80, quantile_95 = walk_forward_validation(df, cfg)
 
-    plot_predictions(df, mc_mean, quantile_80, quantile_95)
-    plot_predictions(df, mc_mean, [mc_mean - 1.28*total_uncertainty, mc_mean+1.28*total_uncertainty],
-                     [mc_mean - 1.96*total_uncertainty, mc_mean + 1.96*total_uncertainty])
+    # plot_predictions(df, mc_mean, quantile_80, quantile_95, cfg)
+    plot_predictions(df, mc_mean, np.array([mc_mean - 1.28*total_uncertainty, mc_mean+1.28*total_uncertainty]),
+                     np.array([mc_mean - 1.96*total_uncertainty, mc_mean + 1.96*total_uncertainty]), cfg)
 
 
 if __name__ == '__main__':

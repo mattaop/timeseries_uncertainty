@@ -11,10 +11,10 @@ def build_model(train_x, train_y, cfg):
     x = Flatten()(x)
     x = Dense(cfg['number_of_nodes'], activation='relu')(x)
     x = Dropout(cfg['dropout_rate'])(x)
-    x = Dense(1)(x)
+    x = Dense(cfg['forecasting_horizon'])(x)
 
     model = Model(inp, x, name=cfg['model'])
-    es = EarlyStopping(monitor='val_loss', mode='min', verbose=0, patience=10)
+    es = EarlyStopping(monitor='val_loss', mode='min', verbose=0, patience=cfg['patience'])
     cb = [es]
     model.compile(optimizer='adam', loss='mse')
     model.summary()
