@@ -1,14 +1,15 @@
-model: cnn # resnet, cnn, lstm, autoencoder
+model: lstm # resnet, cnn, lstm, cnn_lstm_encoder
 data_source: airpassengers # m4, airpassengers, sine_data, arp
 number_of_nodes: 64
 number_of_epochs: 200
-number_of_mc_forward_passes: 20 # Number of forward passes done to obtain Bayesian estimate of output
-batch_size: 32
-dropout_rate: 0.5
-patience: 20
+number_of_mc_forward_passes: 200 # Number of forward passes done to obtain Bayesian estimate of output
+batch_size: 64
+dropout_rate_test: 0.5 # Dropout_rate during testing
+patience: 50
 sequence_length: 24 # Length of sequence used as input when predicting next step
 forecasting_horizon: 1 # Number of steps in the future predicted
 test_size: 0.2 # Fraction of data set used for testing
 multi_step_prediction: True # True / False if using predicted values to predict further or using actual test data
 differencing: False # If True, differences the data before fitting model, and then inverse it afterwards
 mc_dropout: True # If True, Dropout is applied at testing phase, in order to get an mc estimate of prediction interval
+n_feature_extraction: 128 # Numbers of features extracted from autoencoder

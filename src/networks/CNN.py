@@ -1,10 +1,10 @@
-from keras import Input, Model
-from keras.layers import Dense, Conv1D, MaxPooling1D, Flatten, Dropout
+from keras import Model
+from keras.layers import *
 from keras.callbacks import EarlyStopping
 
 
 def build_model(train_x, train_y, cfg):
-    inp = Input(shape=(cfg['sequence_length'], 1))
+    inp = Input(shape=(cfg['sequence_length'], cfg['n_feature_extraction']))
     x = Conv1D(cfg['number_of_nodes'], kernel_size=2, activation='relu')(inp)
     x = Dropout(cfg['dropout_rate'])(x)
     x = MaxPooling1D(pool_size=2)(x)

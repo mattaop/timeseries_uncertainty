@@ -1,18 +1,17 @@
-from keras import Input, Model
-from keras.layers import Dense, LSTM, RepeatVector
-from src.utility.permanent_dropout import permanent_dropout
+from keras import Model
+from keras.layers import *
 
 
-def build_model(train_x, train_y, cfg):
+def build_model(train_x, cfg):
     inp = Input(shape=(cfg['sequence_length'], 1))
-    x = LSTM(cfg['number_of_nodes'], activation='relu')(inp)
-    x = permanent_dropout(cfg['dropout_rate'])(x)
-    x = RepeatVector(cfg['sequence_length'])(x)
-    x = LSTM(cfg['number_of_nodes'], activation='relu', return_sequences=False)(x)
-    x = permanent_dropout(cfg['dropout_rate'])(x)
-    x = Dense(1)(x)
-    model = Model(inp, x, name=cfg['model'])
-    model.compile(optimizer='adam', loss='mse')
-    model.fit(train_x, train_y, epochs=cfg['number_of_epochs'], batch_size=cfg['batch_size'], callbacks=[],
-              validation_split=0.1, verbose=2)
-    return model
+    encoded_ae = LSTM(cfg['n_feature_extraction'], activation='relu', return_sequences=True)(inp)
+    encoded_ae = Dropout(0.3)(encoded_ae)
+    decoded_ae = LSTM(32, activation='relu', return_sequences=True)(encoded_ae)
+    decoded_ae = Dropout(0.3)(decoded_ae)
+    out_ae = TimeDistributed(Dense(1))(decoded_ae)
+    sequence_autoencoder = Model(inp, out_ae, name='autoencoder')
+    encoder = Model(inp, encoded_ae, name='encoder')
+
+    sequence_autoencoder.compile(optimizer='adam', loss='mse')
+    sequence_autoencoder.fit(train_x, train_x, epochs=100, batch_size=16, verbose=2, shuffle=True)
+    return encoder
