@@ -7,3 +7,5 @@ pydataset
 pyyaml
 statsmodels
 tqdm
+keras-rectified-adam
+keras-lookahead

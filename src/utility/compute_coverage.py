@@ -1,5 +1,3 @@
-
-
 def compute_coverage(upper_limits, lower_limits, actual_values):
     coverage = 0
     for i in range(len(actual_values)):
