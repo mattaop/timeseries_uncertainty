@@ -30,9 +30,19 @@ def build_lstm_encoder(train, cfg, weights=None):
     decoder.compile(optimizer='adam', loss='mse', metrics=['mse'])
     decoder.summary()
 
-    decoder.fit(train, train, epochs=60, batch_size=16, verbose=2, shuffle=True)
+    decoder.fit(train, train, epochs=6, batch_size=16, verbose=2, shuffle=True)
     encoder = Model(inp, encoded, name='encoder')
 
+    """
+    inputs = Input(shape=(timesteps, input_dim))
+    encoded = LSTM(latent_dim)(inputs)
+
+    decoded = RepeatVector(timesteps)(encoded)
+    decoded = LSTM(input_dim, return_sequences=True)(decoded)
+
+    sequence_autoencoder = Model(inputs, decoded)
+    encoder = Model(inputs, encoded)
+    """
     return encoder, decoder, cfg
 
 

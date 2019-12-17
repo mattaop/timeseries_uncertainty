@@ -1,34 +1,53 @@
+import numpy as np
+import matplotlib.pyplot as plt
 from keras import Model
 from keras.layers import *
 from keras.callbacks import EarlyStopping
+from keras.optimizers import Adam
+from keras_lookahead import Lookahead
 
 
-def build_model(train_x, train_y, cfg):
-    #inp = Input(shape=(cfg['sequence_length'], cfg['n_feature_extraction']+cfg['num_features']))
-    if cfg['autoencoder']:
-        inp = Input(shape=(6+cfg['num_features'], 1))
-    else:
-        inp = Input(shape=(cfg['sequence_length'], cfg['num_features']))
-    x = Conv1D(cfg['number_of_nodes'], kernel_size=2, activation='relu')(inp)
-    x = Dropout(0.3)(x)
+def build_model(train_x, train_y, cfg, val_x, val_y):
+    print('cnn_model')
+    filters = 64
+    number_of_epochs = 3000
+    batch_size = 32
+    learning_rate = 0.001
+    patience = 4000
+
+    inp = Input(shape=(train_x.shape[1], train_x.shape[2]))
+
+    x = Conv1D(filters, kernel_size=2, activation='relu')(inp)
+    x = Dropout(0.4)(x)
     x = MaxPooling1D(pool_size=2)(x)
-    x = Conv1D(cfg['number_of_nodes'], kernel_size=2, activation='relu')(x)
-    x = Dropout(0.3)(x)
-    x = MaxPooling1D(pool_size=2)(x)
+
+    # x = Conv1D(32, kernel_size=2, activation='relu')(x)
+    # x = Dropout(0.4)(x)
+    # x = MaxPooling1D(pool_size=2)(x)
+
     x = Flatten()(x)
-    x = Dense(cfg['number_of_nodes'], activation='relu')(x)
-    x = Dropout(0.3)(x)
-    x = Dense(cfg['forecasting_horizon'])(x)
+    x = Dense(64, activation='relu')(x)
+    x = Dropout(0.4)(x)
+    x = Dense(1)(x)
 
     model = Model(inp, x, name=cfg['model'])
-    es = EarlyStopping(monitor='val_loss', mode='min', verbose=0, patience=cfg['patience'])
+    es = EarlyStopping(monitor='val_loss', mode='min', verbose=0, patience=patience)
     cb = [es]
-    model.compile(optimizer='adam', loss='mse')
+    model.compile(optimizer=Lookahead(Adam(lr=learning_rate)), loss='mse')
     model.summary()
-    # train_x, val_x = train_x[:-int(0.1 * len(train_x))], train_x[-int(0.1 * len(train_x)):]
-    # train_y, val_y = train_y[:-int(0.1 * len(train_y))], train_y[-int(0.1 * len(train_y)):]
-    model.fit(train_x, train_y, epochs=cfg['number_of_epochs'], batch_size=cfg['batch_size'], callbacks=cb,
-              # validation_data=(val_x, val_y),
-              validation_split=0.15,
-              verbose=2)
+
+    history = model.fit(train_x, train_y, epochs=number_of_epochs, batch_size=batch_size, callbacks=cb,
+                        validation_data=(val_x, val_y),
+                        verbose=2)
+
+    """
+    plt.plot(np.log(history.history['loss']))
+    plt.plot(np.log(history.history['val_loss']))
+    plt.title('CNN log loss')
+    plt.ylabel('Log loss')
+    plt.xlabel('Epoch')
+    plt.legend(['Train', 'Validation'], loc='upper left')
+    plt.show()
+    """
+
     return model

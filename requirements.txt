@@ -9,3 +9,5 @@ statsmodels
 tqdm
 keras-rectified-adam
 keras-lookahead
+seaborn
+pmdarima

@@ -2,37 +2,46 @@ from keras import Model
 from keras.layers import *
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras_radam import RAdam
+from keras.optimizers import Adam
+from keras.regularizers import l2
 from keras_lookahead import Lookahead
+import matplotlib.pyplot as plt
+import numpy as np
 
 
-def build_model(train_x, train_y, cfg):
-    print(train_x.shape)
-    print(train_y.shape)
+def build_model(train_x, train_y, cfg, val_x, val_y):
+    nodes = 64
+    number_of_epochs = 1500
+    batch_size = 128
+    learning_rate = 0.0005
+    patience = 3000
+    number_of_lstm_layers = 1
+
     inp = Input(shape=(train_x.shape[1], train_x.shape[2]))
-    # x = Dropout(cfg['dropout_rate'])(inp)
-    x = LSTM(128, return_sequences=True, dropout=0.3)(inp, training=True)
-    # x = Dropout(0.3)(x)
-    # x = LSTM(cfg['number_of_nodes'], activation='relu', return_sequences=True)(x)
-    # x = Dropout(cfg['dropout_rate'])(x)
-    # x = LSTM(cfg['number_of_nodes'], activation='relu', return_sequences=True)(x)
-    # x = Dropout(cfg['dropout_rate'])(x)
-    x = LSTM(32, return_sequences=False, dropout=0.3)(x, training=True)
-    # x = Dropout(0.3)(x)
+    x = inp
+    for i in range(number_of_lstm_layers-1):
+        x = LSTM(nodes, return_sequences=True)(x)
+        x = Dropout(0.4)(x)
+    x = LSTM(nodes, activation='relu', return_sequences=False)(x)
+    x = Dropout(0.2)(x)
     x = Dense(cfg['number_of_nodes'], activation='relu')(x)
-    # x = Dropout(0.3)(x)
-    out = Dense(cfg['forecasting_horizon'])(x)
+    x = Dropout(0.4)(x)
+    out = Dense(1)(x)
 
     model = Model(inp, out, name=cfg['model'])
-    #es = EarlyStopping(monitor='val_loss', mode='min', verbose=0, patience=cfg['patience'])
-    #checkpoint = ModelCheckpoint('weights-improvement-{epoch:02d}-{val_loss:.2f}.hdf5', monitor='val_loss',
-    #                             verbose=0, save_best_only=True, mode='max')
+    early_stopping = EarlyStopping(monitor='val_loss', mode='min', verbose=0, patience=patience)
+    #checkpoint = ModelCheckpoint('weights\\LSTM_weights_{epoch:02d}_{val_loss:.2f}.hdf5', monitor='val_loss',
+    #                             verbose=0, save_best_only=True, mode='min')
 
-    model.compile(optimizer='adam', loss='mse')
+    model.compile(optimizer=Adam(lr=learning_rate), loss='mse')
     model.summary()
-    model.fit(train_x, train_y, epochs=cfg['number_of_epochs'], batch_size=cfg['batch_size'],
+    history = model.fit(train_x, train_y, epochs=number_of_epochs, batch_size=batch_size,
               shuffle=True,
+              callbacks=[early_stopping],
               # validation_split=0.1,
+              validation_data=(val_x, val_y),
               verbose=2)
+
     return model
 
 

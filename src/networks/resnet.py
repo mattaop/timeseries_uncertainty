@@ -1,8 +1,7 @@
 from keras import Input, Model
 from keras.layers import Dense, Conv1D, MaxPooling1D, Flatten
-from keras.callbacks import EarlyStopping
-from src.utility.residual_layer import residual_layer
-from src.utility.permanent_dropout import permanent_dropout
+from src.utility.unused_files.residual_layer import residual_layer
+from src.utility.unused_files.permanent_dropout import permanent_dropout
 
 
 def build_model(train_x, train_y, cfg):

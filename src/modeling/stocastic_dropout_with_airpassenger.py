@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 
 from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.model_selection import train_test_split
 from keras import backend as K
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from statsmodels.tsa.statespace.sarimax import SARIMAX
@@ -18,6 +19,36 @@ from src.dataclasses.Airpassengers import Airpassengers
 from src.networks.Autoencoder_class import Autoencoder
 from src.utility.error_computation import statistics
 from src.networks.MonteCarloNetwork import MonteCarloNetwork
+
+
+def plot_airpassengers(data, pred, mse, pred_es, pred_arima):
+
+    # Compute mean, uncertainty and noise of Monte Carlo forecasts
+    mean = np.mean(np.hstack(pred).T, axis=0)
+    mc_uncertainty = np.std(np.hstack(pred).T, axis=0)
+    inherent_noise = np.sqrt(np.mean(mse))
+    uncertainty = np.sqrt(inherent_noise ** 2 + mc_uncertainty ** 2)
+    print(len(data))
+    plt.plot(np.linspace(1, len(data), len(data)), data, color='green', label='True')
+
+    plt.plot(np.linspace(len(data)-len(pred_es), len(data), len(pred_es)), pred_es[:, 0], color='blue', label='Exponential smoothing')
+    plt.plot(np.linspace(len(data)-len(pred_arima), len(data), len(pred_arima)), pred_arima[:, 0], color='red', label='SARIMAX')
+
+    # Plot Neural network with uncertainty
+    plt.plot(np.linspace(len(data)-len(mean), len(data), len(mean)), mean, color='orange', label='Neural Network')
+    plt.title('Airpassengers data set')
+    plt.fill_between(np.linspace(len(data)-len(mean), len(data), len(mean)),
+                     mean - 1.28 * uncertainty,
+                     mean + 1.28 * uncertainty,
+                     alpha=0.5, edgecolor='#CC4F1B', facecolor='#FF9848', label='80%-PI')
+    plt.fill_between(np.linspace(len(data)-len(mean), len(data), len(mean)),
+                     mean - 1.96 * uncertainty,
+                     mean + 1.96 * uncertainty,
+                     alpha=0.2, edgecolor='#CC4F1B', facecolor='#FF9848', label='95%-PI')
+    plt.xlabel('Weeks')
+    plt.ylabel('')
+    plt.legend()
+    plt.show()
 
 
 def pre_training(data, cfg):
@@ -90,6 +121,9 @@ def pipeline(data, cfg):
         autoencoder = None
     # Extract data
     train_x, train_y, train_f = data.get_train_sequence()
+    plt.figure()
+    plt.plot(data.data)
+    plt.show()
 
     # Fit model
     mc_model = MonteCarloNetwork(data, autoencoder, cfg)
@@ -102,50 +136,34 @@ def pipeline(data, cfg):
 
     test_x, test_y, test_f = data.get_test_sequence()
 
-    # Forecast on the last proportion of the data sets
-    # mse_test, pred_test = monte_carlo_dropout(test_x, test_y, model, autoencoder, scaler, 0.5, cfg,
-    #                                          num_forward_passes=cfg['number_of_mc_forward_passes']
+    # Forecast on the last proportion of the data set
     mse_test, pred_test = monte_carlo_dropout(mc_model, test_x, test_y, test_f)
-    """
-    pred_es = []
-    pred_arima = []
-    for region in data.regions:
-        if region not in data.holdout_region:
-            for avocado_type in data.avocado_types:
-                model_es = ExponentialSmoothing(data.train.loc[:, pd.IndexSlice['AveragePrice', region, avocado_type]],
-                                                seasonal_periods=52)
-                model_es = model_es.fit()
-                pred_es.append(model_es.predict(start=data.test.index[cfg['sequence_length']],
-                                                end=data.test.index[-1]))
-                model_arima = SARIMAX(data.train.loc[:, pd.IndexSlice['AveragePrice', region, avocado_type]], order=(3, 1, 0))
-                model_arima = model_arima.fit()
-                pred_arima.append(model_arima.predict(start=data.test.index[cfg['sequence_length']],
-                                                      end=data.test.index[-1]))
+
+    model_es = ExponentialSmoothing(data.train)
+    model_es = model_es.fit()
+    pred_es = model_es.predict(start=data.test.index[cfg['sequence_length']],
+                               end=data.test.index[-1])
+    model_arima = SARIMAX(data.train, order=(3, 1, 0))
+    model_arima = model_arima.fit()
+    pred_arima = model_arima.predict(start=data.test.index[cfg['sequence_length']],
+                                     end=data.test.index[-1])
 
     pred_es = np.asarray(pred_es).reshape(test_y.shape)
     pred_arima = np.asarray(pred_arima).reshape(test_y.shape)
-    print('Exponential Smoothing:', mean_squared_error(test_y, pred_es))
-    print('SARIMAX:', mean_squared_error(test_y, pred_arima))
-    """
     print('======= Test Statistics =======')
     statistics(test_x, test_y, mse_test, pred_test)
-
-    # Extract hold-out data set
-    holdout_x, holdout_y, holdout_f = data.get_holdout_sequence(avocado_types=['organic'])
-
-    # Forecast on unseen hold-out set
-    # mse_holdout, pred_holdout = monte_carlo_dropout(holdout_x, holdout_y, model, autoencoder, scaler, 0.5, cfg,
-    #                                                 num_forward_passes=cfg['number_of_mc_forward_passes'])
-    mse_holdout, pred_holdout = monte_carlo_dropout(mc_model, holdout_x, holdout_y, holdout_f)
-
-    print('======= Holdout Statistics =======')
-    statistics(holdout_x, holdout_y, mse_holdout, pred_holdout)
+    print('Exponential Smoothing:', mean_squared_error(test_y, pred_es))
+    print('SARIMAX:', mean_squared_error(test_y, pred_arima))
+    plt.figure()
+    plt.plot(data.data)
+    plt.show()
+    plot_airpassengers(data.data, pred_test, mse_test, pred_es, pred_arima)
 
 
 def main():
     df, cfg = load_data()
 
-    data = Avocado(cfg)
+    data = Airpassengers(cfg)
 
     pipeline(data, cfg)
 
