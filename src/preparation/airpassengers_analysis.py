@@ -8,6 +8,7 @@ from statsmodels.tsa.seasonal import seasonal_decompose
 
 
 df, cfg = load_data(data_set='AirPassengers')
+print(len(df))
 plot_acf(df.values, lags=30)
 plot_pacf(df.values, lags=30)
 plt.show()

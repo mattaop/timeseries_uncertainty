@@ -73,12 +73,15 @@ def plot_predictions(df, mean, mse, quantile_80, quantile_95, cfg):
 
 
 # Compute baseline models
-def baseline_models(df, cfg):
+def baseline_models(df, coverage, cfg):
     train, test = train_test_split(df['y'], cfg['test_size'])
-    model_es = ExponentialSmoothing(train, seasonal_periods=12,
-                                    trend='mul', seasonal='mul')
-    model_es = model_es.fit(optimized=True)
-    pred_es = model_es.predict(start=df.index[-len(test)], end=df.index[-1])
+    scaler = MinMaxScaler()
+    train = scaler.fit_transform(train.values.reshape(-1, 1))
+    test = scaler.transform(test.values.reshape(-1, 1))
+    #model_es = ExponentialSmoothing(train, seasonal_periods=12,
+    #                                trend='mul', seasonal='mul')
+    #model_es = model_es.fit(optimized=True)
+    #pred_es = model_es.predict(start=df.index[-len(test)], end=df.index[-1])
 
     auto_model = auto_arima(train, start_p=1, start_q=1, max_p=3, max_q=3,
                             m=12, start_P=1, start_Q=1, seasonal=True, d=1, D=1, suppress_warnings=True,
@@ -90,7 +93,7 @@ def baseline_models(df, cfg):
     conf_int_arima = np.zeros([len(test)-cfg['forecast_horizon'], cfg['forecast_horizon'], 2])
     for i in range(len(test)-cfg['forecast_horizon']):
         forecast_arima = auto_model.predict(n_periods=cfg['forecast_horizon'],
-                                            return_conf_int=True, alpha=0.05)
+                                            return_conf_int=True, alpha=1-coverage)
         pred_arima[i] = forecast_arima[0]
         conf_int_arima[i] = forecast_arima[1]
         auto_model.update(y=[test[i]])
@@ -107,22 +110,21 @@ def baseline_models(df, cfg):
         plt.show()
         """
 
-    mse, coverage, prediction_interval_width = [], [], []
+    mse, coverage_pi, prediction_interval_width = [], [], []
     for i in range(cfg['forecast_horizon']):
 
         mse.append(mean_squared_error(test[i:len(test)-cfg['forecast_horizon']+i], pred_arima[:, i]))
-        coverage_95pi = compute_coverage(upper_limits=conf_int_arima[:, i, 1],
-                                         lower_limits=conf_int_arima[:, i, 0],
-                                         actual_values=test[i:len(test)-cfg['forecast_horizon']+i])
-        coverage.append(coverage_95pi)
+        coverage_pi.append(compute_coverage(upper_limits=conf_int_arima[:, i, 1],
+                                            lower_limits=conf_int_arima[:, i, 0],
+                                            actual_values=test[i:len(test)-cfg['forecast_horizon']+i]))
         prediction_interval_width.append(np.mean(conf_int_arima[:, i, 1]-conf_int_arima[:, i, 0], axis=0))
 
     print('ARIMA')
     print('MSE sliding window', mse)
-    print('Coverage 95% PI sliding window', coverage)
-    print('Width 95% PI sliding window', prediction_interval_width)
+    print('Coverage', coverage*100, 'PI sliding window', coverage_pi)
+    print('Width', coverage*100, 'PI sliding window', prediction_interval_width)
     print(np.mean(mse))
-    return mse, coverage, prediction_interval_width
+    return mse, coverage_pi, prediction_interval_width
 
 
 def sliding_monte_carlo_forecast(train, test, model, cfg, inherent_noise):
@@ -166,7 +168,9 @@ def sliding_monte_carlo_forecast(train, test, model, cfg, inherent_noise):
         plt.show()
         """
 
-    mse_sliding, coverage_95_pi, width_95_pi = [], [], []
+    mse_sliding = []
+    coverage_95_pi, width_95_pi = [], []
+    coverage_80_pi, width_80_pi = [], []
     for i in range(window_length):
         total_uncertainty = np.sqrt(inherent_noise + np.var(prediction_sequence[:, :, i], axis=1))
         mean = prediction_sequence[:, :, i].mean(axis=1)
@@ -174,7 +178,11 @@ def sliding_monte_carlo_forecast(train, test, model, cfg, inherent_noise):
         coverage_95_pi.append(compute_coverage(upper_limits=mean + 1.96*total_uncertainty,
                                                lower_limits=mean - 1.96*total_uncertainty,
                                                actual_values=test[i:len(test)-window_length+i]))
+        coverage_80_pi.append(compute_coverage(upper_limits=mean + 1.28 * total_uncertainty,
+                                               lower_limits=mean - 1.28 * total_uncertainty,
+                                               actual_values=test[i:len(test) - window_length + i]))
         width_95_pi.append(2*1.96*np.mean(total_uncertainty, axis=0)[0])
+        width_80_pi.append(2*1.28*np.mean(total_uncertainty, axis=0)[0])
     """
     t = np.linspace(1, window_length, window_length)
     plt.figure()
@@ -191,10 +199,7 @@ def sliding_monte_carlo_forecast(train, test, model, cfg, inherent_noise):
     plt.ylabel('Width of prediction interval')
     plt.show()
     """
-
-    print(coverage_95_pi)
-    print(width_95_pi)
-    return coverage_95_pi, width_95_pi, mse_sliding
+    return mse_sliding, coverage_95_pi, width_95_pi, coverage_80_pi, width_80_pi
 
 
 # root mean squared error or rmse
@@ -211,15 +216,19 @@ def train_autoencoder(data, cfg):
 
 # walk-forward validation for univariate data
 def pipeline(df, cfg):
-    print(df)
     train_and_val, test = train_test_split(df, cfg['test_size'])
+
+    scaler = MinMaxScaler()
+    train_and_val = scaler.fit_transform(train_and_val.reshape(-1, 1))
+    test = scaler.transform(test.reshape(-1, 1))
     print('Length train', len(train_and_val))
     print('Length test', len(test))
 
     train, val = train_test_split(train_and_val, cfg['validation_size'])
     train_x, train_y = split_sequence(train, cfg)
     val_x, val_y = split_sequence(np.concatenate([train[-cfg['sequence_length']:], val]), cfg)
-
+    print('trainx', len(train_x))
+    print('val', len(val))
     # If using an encoder, extract features from training data,
     model = train_model(train_x, train_y, cfg, val_x, val_y)
 
@@ -237,34 +246,48 @@ def pipeline(df, cfg):
     print('Validation mse: ', inherent_noise)
 
     # Predict sequence over testing set using Monte Carlo dropout with n forward passes
-    coverage_95_pi_sliding_window, width_95_pi_sliding_window, mse_sliding_window = sliding_monte_carlo_forecast(train_and_val, test, model, cfg, inherent_noise)
+    mse_sliding, coverage_95_pi, width_95_pi, coverage_80_pi, width_80_pi = sliding_monte_carlo_forecast(train_and_val,
+                                                                                                         test, model,
+                                                                                                         cfg,
+                                                                                                         inherent_noise)
 
-    return coverage_95_pi_sliding_window, width_95_pi_sliding_window, mse_sliding_window
+    return mse_sliding, coverage_95_pi, width_95_pi, coverage_80_pi, width_80_pi
 
 
 def run_multiple_neural_networks(df, cfg):
-    n_runs = 5
+    n_runs = 1
     coverage_95_pi = np.zeros([n_runs, cfg['forecast_horizon']])
     width_95_pi = np.zeros([n_runs, cfg['forecast_horizon']])
+    coverage_80_pi = np.zeros([n_runs, cfg['forecast_horizon']])
+    width_80_pi = np.zeros([n_runs, cfg['forecast_horizon']])
     mse = np.zeros([n_runs, cfg['forecast_horizon']])
-    if cfg['encoder']:
-        pre_training(df, cfg)
     for i in range(n_runs):
-        coverage_95_pi_sliding_window, width_95_pi_sliding_window, mse_sliding_window = pipeline(df['y'].values.reshape(-1, 1), cfg)
+        mse_sliding_window, coverage_95_pi_sliding_window, width_95_pi_sliding_window, coverage_80_pi_sliding_window, \
+            width_80_pi_sliding_window = pipeline(df['y'].values.reshape(-1, 1), cfg)
         coverage_95_pi[i] = coverage_95_pi_sliding_window
+        coverage_80_pi[i] = coverage_80_pi_sliding_window
         width_95_pi[i] = width_95_pi_sliding_window
+        width_80_pi[i] = width_80_pi_sliding_window
         mse[i] = mse_sliding_window
     mean_mse = np.mean(mse, axis=0)
-    mean_coverage = np.mean(coverage_95_pi, axis=0)
-    mean_width = np.mean(width_95_pi, axis=0)
+    mean_coverage_95 = np.mean(coverage_95_pi, axis=0)
+    mean_coverage_80 = np.mean(coverage_80_pi, axis=0)
+    mean_width_95 = np.mean(width_95_pi, axis=0)
+    mean_width_80 = np.mean(width_80_pi, axis=0)
     print('-----------------------------------------------------------')
-    print('MSE sliding window', mean_mse)
-    print('Coverage 95% PI sliding window', mean_coverage)
-    print('Width 95% PI sliding window', mean_width)
-    print('Average MSE 95% PI', np.mean(mean_mse))
-    print('Average coverage 95% PI', np.mean(mean_coverage))
-    print('Average width 95% PI', np.mean(mean_width))
+    print('MSE sliding window', list(mean_mse))
+    print('Coverage 95% PI sliding window',  list(mean_coverage_95))
+    print('Width 95% PI sliding window',  list(mean_width_95))
+    print('Coverage 80% PI sliding window',  list(mean_coverage_80))
+    print('Width 80% PI sliding window',  list(mean_width_80))
 
+    print('Average MSE', np.mean(mean_mse))
+    print('Average coverage 95% PI', np.mean(mean_coverage_95))
+    print('Average width 95% PI', np.mean(mean_width_95))
+    print('Average coverage 80% PI', np.mean(mean_coverage_80))
+    print('Average width 80% PI', np.mean(mean_width_80))
+
+    """
     t = np.linspace(1, cfg['forecast_horizon'], cfg['forecast_horizon'])
 
     plt.figure()
@@ -275,7 +298,7 @@ def run_multiple_neural_networks(df, cfg):
     plt.show()
 
     plt.figure()
-    plt.plot(t, mean_coverage)
+    plt.plot(t, mean_coverage_95)
     plt.title('95% Prediction Interval Coverage')
     plt.xlabel('Forecast length (months)')
     plt.ylabel('Average coverage')
@@ -287,6 +310,7 @@ def run_multiple_neural_networks(df, cfg):
     plt.xlabel('Forecast length (months)')
     plt.ylabel('Width of prediction interval')
     plt.show()
+    """
 
 
 def main():
@@ -304,16 +328,13 @@ def main():
     plt.show()
     """
 
-    scaler = MinMaxScaler()
-    # df['y'] = np.log(df['y'])
-    df['y'] = scaler.fit_transform(df['y'].values.reshape(-1, 1))
-
     if cfg['differencing']:
         df = df.diff(periods=1).dropna()
         df = df.diff(periods=12).dropna()
 
     run_multiple_neural_networks(df, cfg)
-    baseline_models(df, cfg)
+    #baseline_models(df, 0.95, cfg)
+    #baseline_models(df, 0.80, cfg)
     print(cfg)
 
 

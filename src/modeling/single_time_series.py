@@ -40,7 +40,7 @@ from src.processing.split_data import train_test_split, split_sequence
 
 def plot_predictions(df, mean, mse, quantile_80, quantile_95, cfg):
     x_data = np.linspace(1, len(df), len(df))
-    pred_sarima, pred_es, conf_int_arima = baseline_models(df, cfg)
+    pred_sarima, pred_es = baseline_models(df, cfg)
     print("_______________________________________")
     print("|Method                     | MSE     |")
     print("|Exponential smoothing      |", "%.5f" % mean_squared_error(pred_es, df[-len(mean[:, 0]):]), "|")
@@ -87,12 +87,19 @@ def baseline_models(df, cfg):
     forecast_arima = auto_model.predict(n_periods=len(test),
                                         return_conf_int=True, alpha=0.05)
     pred_arima = forecast_arima[0]
-    conf_int_arima = forecast_arima[1]
+    conf_int_95_arima = forecast_arima[1]
+    forecast_arima = auto_model.predict(n_periods=len(test),
+                                        return_conf_int=True, alpha=0.2)
+    conf_inf_80_arima = forecast_arima[1]
 
-    coverage_95pi = compute_coverage(upper_limits=conf_int_arima[:, 1],
-                                     lower_limits=conf_int_arima[:, 0],
+    coverage_95pi = compute_coverage(upper_limits=conf_int_95_arima[:, 1],
+                                     lower_limits=conf_int_95_arima[:, 0],
+                                     actual_values=test)
+    coverage_80pi = compute_coverage(upper_limits=conf_inf_80_arima[:, 1],
+                                     lower_limits=conf_inf_80_arima[:, 0],
                                      actual_values=test)
     print('ARIMA 95%-prediction interval coverage: ', coverage_95pi)
+    print('ARIMA 80%-prediction interval coverage: ', coverage_80pi)
 
     # model_arima = SARIMAX(df['y'].iloc[:-test_size], order=(1, 1, 0), seasonal_order=(0, 1, 0, 12))
     # model_arima = model_arima.fit(full_output=False, disp=False)
@@ -103,7 +110,21 @@ def baseline_models(df, cfg):
     pred_es = np.asarray(pred_es)
     pred_arima = np.asarray(pred_arima)
 
-    return pred_arima, pred_es, conf_int_arima
+    x_data = np.linspace(1, len(df), len(df))
+    x_predictions = np.linspace(len(train)+1, len(df), len(test))
+    plt.figure()
+    plt.title("SARIMA Time Series Forecasting")
+    plt.plot(x_data, df, label='Data')
+    plt.plot(x_predictions, pred_arima, label='SARIMA')
+    plt.plot(x_predictions, pred_es, label='Exponential Smoothing')
+
+    plt.fill_between(x_predictions, conf_inf_80_arima[:, 0], conf_inf_80_arima[:, 1],
+                     alpha=0.5, edgecolor='#CC4F1B', facecolor='#FF9848', label='80%-PI')
+    plt.fill_between(x_predictions, conf_int_95_arima[:, 0], conf_int_95_arima[:, 1],
+                     alpha=0.2, edgecolor='#CC4F1B', facecolor='#FF9848', label='95%-PI')
+    plt.legend()
+    plt.show()
+    return pred_arima, pred_es
 
 
 # forecast with a pre-fit model
@@ -328,10 +349,10 @@ def main():
     plt.show()
     """
 
+    print(df)
     scaler = MinMaxScaler()
     # df['y'] = np.log(df['y'])
     df['y'] = scaler.fit_transform(df['y'].values.reshape(-1, 1))
-
     if cfg['differencing']:
         df = df.diff(periods=1).dropna()
         df = df.diff(periods=12).dropna()

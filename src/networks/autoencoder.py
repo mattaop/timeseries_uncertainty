@@ -9,6 +9,8 @@ def build_autoencoder(train, cfg, weights=None):
         encoder, decoder, cfg = build_lstm_encoder(train, cfg, weights)
     elif cfg['autoencoder'].lower() == 'cnn':
         encoder, decoder, cfg = build_cnn_encoder(train, cfg, weights)
+    elif cfg['autoencoder'].lower() == 'rnn':
+        encoder, decoder, cfg = build_rnn_encoder(train, cfg, weights)
     else:
         encoder = None
         decoder = None
@@ -19,7 +21,7 @@ def build_autoencoder(train, cfg, weights=None):
 def build_lstm_encoder(train, cfg, weights=None):
     print(train.shape)
     inp = Input(shape=(cfg['sequence_length'], 1))
-    encoded = LSTM(128, return_sequences=True, dropout=0.3)(inp, training=True)
+    encoded = LSTM(32, return_sequences=True, dropout=0.3)(inp, training=True)
     # encoded = Dropout(0.3)(encoded)
 
     decoded = LSTM(32, return_sequences=True, dropout=0.3)(encoded, training=True)
@@ -30,7 +32,7 @@ def build_lstm_encoder(train, cfg, weights=None):
     decoder.compile(optimizer='adam', loss='mse', metrics=['mse'])
     decoder.summary()
 
-    decoder.fit(train, train, epochs=6, batch_size=16, verbose=2, shuffle=True)
+    decoder.fit(train, train, epochs=100, batch_size=64, verbose=2, shuffle=True)
     encoder = Model(inp, encoded, name='encoder')
 
     """
@@ -72,3 +74,21 @@ def build_cnn_encoder(train_x, cfg, weights=None):
 
     return encoder, decoder, cfg
 
+
+def build_rnn_encoder(train_x, cfg, weights=None):
+    inp = Input(shape=(train_x.shape[1], train_x.shape[2]))
+    x = LSTM(10, dropout=0.4)(inp)
+    encoded = RepeatVector(cfg['sequence_length'])(x)
+    x = LSTM(10, return_sequences=True, dropout=0.4)(encoded)
+    x = Dense(10, activation='relu')(x)
+    x = Dropout(0.4)(x)
+    decoded = TimeDistributed(Dense(1, activation='relu'))(x)
+
+    decoder = Model(inp, decoded, name='autoencoder')
+    decoder.summary()
+
+    decoder.compile(optimizer=Lookahead(RAdam()), loss='mse')
+    decoder.fit(train_x, train_x, epochs=10, batch_size=64, verbose=2, shuffle=True)
+    encoder = Model(inp, encoded, name='encoder')
+    encoder.summary()
+    return encoder, decoder, cfg

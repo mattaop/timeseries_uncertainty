@@ -7,8 +7,6 @@ from statsmodels.tsa.seasonal import seasonal_decompose
 from src.preparation.load_data import load_data
 
 df, cfg = load_data(data_set='oslo_temperature')
-print(df)
-
 plot_acf(df.values, lags=30)
 plot_pacf(df.values, lags=30)
 plt.show()
@@ -20,7 +18,7 @@ plt.show()
 fig = plt.figure()
 ax = fig.gca()
 ax.plot(df)
-plt.xlabel('Year')
+plt.xlabel('Date')
 plt.ylabel('Temperature')
 plt.title('Temperature of Oslo')
 ax.set_xticks(df.index[::10*12].date)

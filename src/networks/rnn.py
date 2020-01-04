@@ -11,12 +11,12 @@ import matplotlib.pyplot as plt
 
 def build_model(train_x, train_y, cfg, val_x, val_y):
     nodes = 64
-    number_of_epochs = 1500
+    number_of_epochs = 300
     batch_size = 64
     learning_rate = 0.001
     patience = 1200
     dropout_rate = 0.4
-    number_of_recurrent_layers = 1
+    number_of_recurrent_layers = 3
 
     inp = Input(shape=(train_x.shape[1], train_x.shape[2]))
     x = inp
