@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from keras import backend as K
-from statsmodels.tsa.holtwinters import ExponentialSmoothing
+from statsmodels.tsa.holtwinters import ExponentialSmoothing, HoltWintersResults
 from pmdarima.arima import auto_arima
 
 from src.preparation.load_data import load_data
@@ -74,57 +74,80 @@ def plot_predictions(df, mean, mse, quantile_80, quantile_95, cfg):
 
 # Compute baseline models
 def baseline_models(df, coverage, cfg):
-    train, test = train_test_split(df['y'], cfg['test_size'])
+    train, test = train_test_split(df, cfg['test_size'])
     scaler = MinMaxScaler()
-    train = scaler.fit_transform(train.values.reshape(-1, 1))
-    test = scaler.transform(test.values.reshape(-1, 1))
-    #model_es = ExponentialSmoothing(train, seasonal_periods=12,
-    #                                trend='mul', seasonal='mul')
-    #model_es = model_es.fit(optimized=True)
-    #pred_es = model_es.predict(start=df.index[-len(test)], end=df.index[-1])
-
+    train['y'] = scaler.fit_transform(train.values.reshape(-1, 1))
+    test['y'] = scaler.transform(test.values.reshape(-1, 1))
+    model_es = ExponentialSmoothing(train, seasonal_periods=12,
+                                    trend='add', seasonal='add')
+    model_es = model_es.fit(optimized=True)
+    print(model_es.params)
+    print(model_es.params['smoothing_level'])
+    residual_variance = model_es.sse/len(train-2)
+    var = []
+    for j in range(cfg['forecast_horizon']):
+        var.append(residual_variance*(1+model_es.params['smoothing_level']**2*j))
     auto_model = auto_arima(train, start_p=1, start_q=1, max_p=3, max_q=3,
                             m=12, start_P=1, start_Q=1, seasonal=True, d=1, D=1, suppress_warnings=True,
                             stepwise=True)
 
     print(auto_model.summary())
 
-    pred_arima = np.zeros([len(test)-cfg['forecast_horizon'], cfg['forecast_horizon']])
-    conf_int_arima = np.zeros([len(test)-cfg['forecast_horizon'], cfg['forecast_horizon'], 2])
+    pred_es = np.zeros([len(test)-cfg['forecast_horizon'], cfg['forecast_horizon']])
+    conf_int_es = np.zeros([len(test)-cfg['forecast_horizon'], cfg['forecast_horizon'], 2])
+    pred_arima = np.zeros([len(test) - cfg['forecast_horizon'], cfg['forecast_horizon']])
+    conf_int_arima = np.zeros([len(test) - cfg['forecast_horizon'], cfg['forecast_horizon'], 2])
     for i in range(len(test)-cfg['forecast_horizon']):
         forecast_arima = auto_model.predict(n_periods=cfg['forecast_horizon'],
                                             return_conf_int=True, alpha=1-coverage)
+        #pred_es[i] = model_es.predict(start=df.index[-len(test-i)], end=df.index[-len(test+cfg['forecast_horizon']-i)])
+        pred_es[i] = model_es.forecast(steps=cfg['forecast_horizon']+i)[-cfg['forecast_horizon']:]
+
+        #for j in range(cfg['forecast_horizon']):
+        conf_int_es[i, :, 0] = pred_es[i]-1.96*np.sqrt(var)
+        conf_int_es[i, :, 1] = pred_es[i]+1.96*np.sqrt(var)
         pred_arima[i] = forecast_arima[0]
         conf_int_arima[i] = forecast_arima[1]
-        auto_model.update(y=[test[i]])
+        auto_model.update(y=[test.values[i]])
 
         """
         t = np.linspace(1, cfg['forecast_horizon'], cfg['forecast_horizon'])
         plt.figure()
         plt.title("Time Series Forecasting")
-        plt.plot(t, forecast_arima[0], label='Mean')
-        plt.plot(t, test[i:cfg['forecast_horizon'] + i])
-        plt.fill_between(t, forecast_arima[1][:, 0], forecast_arima[1][:, 1],
+        plt.plot(t, pred_es[i], label='Predicted')
+        plt.plot(t, test[i:cfg['forecast_horizon'] + i], label='True')
+        plt.fill_between(t, conf_int_es[i, :, 0],  conf_int_es[i, :, 1],
                          alpha=0.2, edgecolor='#CC4F1B', facecolor='#FF9848', label='95%-PI')
         plt.legend()
         plt.show()
         """
 
-    mse, coverage_pi, prediction_interval_width = [], [], []
-    for i in range(cfg['forecast_horizon']):
+    mse_arima, coverage_arima, width_arima = [], [], []
+    mse_es, coverage_es, width_es = [], [], []
 
-        mse.append(mean_squared_error(test[i:len(test)-cfg['forecast_horizon']+i], pred_arima[:, i]))
-        coverage_pi.append(compute_coverage(upper_limits=conf_int_arima[:, i, 1],
-                                            lower_limits=conf_int_arima[:, i, 0],
-                                            actual_values=test[i:len(test)-cfg['forecast_horizon']+i]))
-        prediction_interval_width.append(np.mean(conf_int_arima[:, i, 1]-conf_int_arima[:, i, 0], axis=0))
+    for i in range(cfg['forecast_horizon']):
+        mse_arima.append(mean_squared_error(test[i:len(test)-cfg['forecast_horizon']+i], pred_arima[:, i]))
+        coverage_arima.append(compute_coverage(upper_limits=conf_int_arima[:, i, 1],
+                                               lower_limits=conf_int_arima[:, i, 0],
+                                               actual_values=test.values[i:len(test)-cfg['forecast_horizon']+i]))
+        width_arima.append(np.mean(conf_int_arima[:, i, 1]-conf_int_arima[:, i, 0], axis=0))
+        mse_es.append(mean_squared_error(test[i:len(test) - cfg['forecast_horizon'] + i], pred_es[:, i]))
+        coverage_es.append(compute_coverage(upper_limits=conf_int_es[:, i, 1],
+                                            lower_limits=conf_int_es[:, i, 0],
+                                            actual_values=test.values[i:len(test) - cfg['forecast_horizon'] + i]))
+        width_es.append(np.mean(conf_int_es[:, i, 1] - conf_int_es[:, i, 0], axis=0))
 
     print('ARIMA')
-    print('MSE sliding window', mse)
-    print('Coverage', coverage*100, 'PI sliding window', coverage_pi)
-    print('Width', coverage*100, 'PI sliding window', prediction_interval_width)
-    print(np.mean(mse))
-    return mse, coverage_pi, prediction_interval_width
+    print('MSE sliding window', mse_arima)
+    print('Coverage', coverage*100, 'PI sliding window', coverage_arima)
+    print('Width', coverage*100, 'PI sliding window', width_arima)
+    print(np.mean(mse_arima))
+    print('ES')
+    print('MSE sliding window', mse_es)
+    print('Coverage', coverage * 100, 'PI sliding window', coverage_es)
+    print('Width', coverage * 100, 'PI sliding window', width_es)
+    print(np.mean(mse_es))
+    return mse_arima, coverage_arima, width_arima
 
 
 def sliding_monte_carlo_forecast(train, test, model, cfg, inherent_noise):
@@ -255,7 +278,7 @@ def pipeline(df, cfg):
 
 
 def run_multiple_neural_networks(df, cfg):
-    n_runs = 1
+    n_runs = 10
     coverage_95_pi = np.zeros([n_runs, cfg['forecast_horizon']])
     width_95_pi = np.zeros([n_runs, cfg['forecast_horizon']])
     coverage_80_pi = np.zeros([n_runs, cfg['forecast_horizon']])
@@ -332,9 +355,9 @@ def main():
         df = df.diff(periods=1).dropna()
         df = df.diff(periods=12).dropna()
 
-    run_multiple_neural_networks(df, cfg)
-    #baseline_models(df, 0.95, cfg)
-    #baseline_models(df, 0.80, cfg)
+    #run_multiple_neural_networks(df, cfg)
+    baseline_models(df, 0.95, cfg)
+    baseline_models(df, 0.80, cfg)
     print(cfg)
 
 

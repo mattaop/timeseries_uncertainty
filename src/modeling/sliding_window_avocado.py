@@ -29,6 +29,7 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from keras import backend as K
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from pmdarima.arima import auto_arima
+from statsmodels.tsa.stattools import adfuller
 
 from src.preparation.load_data import load_data
 from src.networks.train_model import train_model
@@ -72,9 +73,12 @@ def plot_predictions(df, mean, mse, quantile_80, quantile_95, cfg):
 
 
 # model
-def pre_training(df, cfg):
+def pre_training(train_and_val, cfg):
     # Train autoencoder as pre training
-    train_and_val, test = train_test_split(df, cfg['test_size'])
+    # train_and_val, test = train_test_split(df, cfg['test_size'])
+    # scaler = MinMaxScaler()
+    # train_and_val = scaler.fit_transform(train_and_val.reshape(-1, 1))
+    # train_and_val[train_and_val.columns.values] = scaler.fit_transform(train_and_val[train_and_val.columns.values].values)
     train, val = train_test_split(train_and_val, cfg['validation_size'])
 
     train_x = []
@@ -117,17 +121,28 @@ def pre_training(df, cfg):
 
 # Compute baseline models
 def baseline_models(df, coverage, cfg):
-    train, test = train_test_split(df['y'], cfg['test_size'])
-    scaler = MinMaxScaler()
-    train = scaler.fit_transform(train.values.reshape(-1, 1))
-    test = scaler.transform(test.values.reshape(-1, 1))
-    #model_es = ExponentialSmoothing(train, seasonal_periods=12,
-    #                                trend='mul', seasonal='mul')
-    #model_es = model_es.fit(optimized=True)
-    #pred_es = model_es.predict(start=df.index[-len(test)], end=df.index[-1])
+    result = adfuller(df['y'].values)
+    print('ADF Statistic: %f' % result[0])
+    print('p-value: %f' % result[1])
+    # df = df.diff(periods=1).dropna()
+    # result = adfuller(df['y'].values)
+    # print('ADF Statistic: %f' % result[0])
+    # print('p-value: %f' % result[1])
 
-    auto_model = auto_arima(train, start_p=1, start_q=1, max_p=3, max_q=3,
-                            m=12, start_P=1, start_Q=1, seasonal=True, d=1, D=1, suppress_warnings=True,
+    train, test = train_test_split(df['y'], cfg['test_size'])
+
+    # scaler = MinMaxScaler()
+    # train = scaler.fit_transform(train.values.reshape(-1, 1))
+    # test = scaler.transform(test.values.reshape(-1, 1))
+
+
+    # model_es = ExponentialSmoothing(train, seasonal_periods=12,
+    #                                trend='mul', seasonal='mul')
+    # model_es = model_es.fit(optimized=True)
+    # pred_es = model_es.predict(start=df.index[-len(test)], end=df.index[-1])
+
+    auto_model = auto_arima(train, start_p=1, start_q=1, max_p=5, max_q=5,
+                            m=52, start_P=1, start_Q=1, seasonal=True, d=1, D=1, suppress_warnings=True,
                             stepwise=True)
 
     print(auto_model.summary())
@@ -192,6 +207,7 @@ def sliding_monte_carlo_forecast(train, test, model, cfg, inherent_noise):
                     history.append(test[i])
                 prediction_sequence[l, j, i] = mc_sample
         forward_validation_set.append(test[l])
+
         """
         total_uncertainty = np.sqrt(inherent_noise + np.var(prediction_sequence[l], axis=0))
         mean = prediction_sequence[l].mean(axis=0)
@@ -214,6 +230,7 @@ def sliding_monte_carlo_forecast(train, test, model, cfg, inherent_noise):
     mse_sliding = []
     coverage_95_pi, width_95_pi = [], []
     coverage_80_pi, width_80_pi = [], []
+
     for i in range(window_length):
         total_uncertainty = np.sqrt(inherent_noise + np.var(prediction_sequence[:, :, i], axis=1))
         mean = prediction_sequence[:, :, i].mean(axis=1)
@@ -267,11 +284,18 @@ def pipeline_baseline(df, cfg):
     coverage_95_pi = np.zeros([n_columns, cfg['forecast_horizon']])
     width_95_pi = np.zeros([n_columns, cfg['forecast_horizon']])
     mse = np.zeros([n_columns, cfg['forecast_horizon']])
+
+    train_and_val, test = train_test_split(df, cfg['test_size'])
     scaler = MinMaxScaler()
-    df[df.columns.values] = scaler.fit_transform(df[df.columns.values].values)
+    # train_and_val = scaler.fit_transform(train_and_val.reshape(-1, 1))
+    train_and_val[train_and_val.columns.values] = scaler.fit_transform(
+        train_and_val[train_and_val.columns.values].values)
+    df[df.columns.values] = scaler.transform(df[df.columns.values].values)
     i = 0
+    if cfg['differencing']:
+        df = df.diff(periods=1, axis=0).dropna()
     for name, values in df.iteritems():
-        single_time_series = pd.DataFrame(data=values, index=values.index, columns='y')
+        single_time_series = pd.DataFrame(data=values.values.reshape(-1, 1), index=values.index, columns=['y'])
         mse_sliding_window, coverage_95_pi_sliding_window, width_95_pi_sliding_window = baseline_models(single_time_series, 0.95, cfg)
         mse_sliding_window, coverage_80_pi_sliding_window, width_80_pi_sliding_window = baseline_models(single_time_series, 0.80, cfg)
         coverage_80_pi[i] = coverage_80_pi_sliding_window
@@ -286,11 +310,11 @@ def pipeline_baseline(df, cfg):
     mean_width_95 = np.mean(width_95_pi, axis=0)
     mean_width_80 = np.mean(width_80_pi, axis=0)
     print('------------------ ARIMA -------------------------')
-    print('MSE sliding window', mean_mse)
-    print('Coverage 95% PI sliding window', mean_coverage_95)
-    print('Width 95% PI sliding window', mean_width_95)
-    print('Coverage 80% PI sliding window', mean_coverage_80)
-    print('Width 80% PI sliding window', mean_width_80)
+    print('MSE sliding window', list(mean_mse))
+    print('Coverage 95% PI sliding window', list(mean_coverage_95))
+    print('Width 95% PI sliding window', list(mean_width_95))
+    print('Coverage 80% PI sliding window', list(mean_coverage_80))
+    print('Width 80% PI sliding window', list(mean_width_80))
 
     print('Average MSE', np.mean(mean_mse))
     print('Average coverage 95% PI', np.mean(mean_coverage_95))
@@ -299,14 +323,18 @@ def pipeline_baseline(df, cfg):
     print('Average width 80% PI', np.mean(mean_width_80))
 
 
-
 # walk-forward validation for univariate data
-def pipeline(df, cfg, model=None):
-    train_and_val, test = train_test_split(df, cfg['test_size'])
-    print('Length train', len(train_and_val))
-    print('Length test', len(test))
+def pipeline(train_and_val, test, cfg, model=None):
+    # train_and_val, test = train_test_split(df, cfg['test_size'])
+    # scaler = MinMaxScaler()
+    # train_and_val = scaler.fit_transform(train_and_val.reshape(-1, 1))
+    # test = scaler.transform(test.reshape(-1, 1))
+    # print('Length train', len(train_and_val))
+    # print('Length test', len(test))
 
     train, val = train_test_split(train_and_val, cfg['validation_size'])
+    print(len(train), len(val), len(test))
+
     train_x, train_y = split_sequence(train, cfg)
     val_x, val_y = split_sequence(np.concatenate([train[-cfg['sequence_length']:], val]), cfg)
 
@@ -337,22 +365,37 @@ def pipeline(df, cfg, model=None):
 
 
 def run_multiple_neural_networks(df, cfg):
+    # Scale data
+    train_and_val, test = train_test_split(df, cfg['test_size'])
+    scaler = MinMaxScaler().fit(train_and_val)
+    df[df.columns.values] = scaler.transform(df[df.columns.values].values)
+    if cfg['differencing']:
+        df = df.diff(periods=1, axis=0).dropna()
+    train_and_val, test = train_test_split(df, cfg['test_size'])
+
+    # train_and_val = scaler.fit_transform(train_and_val.reshape(-1, 1))
+    #train_and_val[train_and_val.columns.values] = scaler.fit_transform(
+    #    train_and_val[train_and_val.columns.values].values)
+    #test[test.columns.values] = scaler.transform(test[test.columns.values].values)
+
     n_columns = len(df.columns.values)
     coverage_80_pi = np.zeros([n_columns, cfg['forecast_horizon']])
     width_80_pi = np.zeros([n_columns, cfg['forecast_horizon']])
     coverage_95_pi = np.zeros([n_columns, cfg['forecast_horizon']])
     width_95_pi = np.zeros([n_columns, cfg['forecast_horizon']])
     mse = np.zeros([n_columns, cfg['forecast_horizon']])
-    scaler = MinMaxScaler()
-    df[df.columns.values] = scaler.fit_transform(df[df.columns.values].values)
     i = 0
     if cfg['autoencoder']:
-        model = pre_training(df, cfg)
+        model = pre_training(train_and_val, cfg)
     else:
         model = None
-    for name, values in df.iteritems():
+    for columnName, columnData in train_and_val.iteritems():
+        result = adfuller(columnData.values)
+        print('ADF Statistic: %f' % result[0])
+        print('p-value: %f' % result[1])
         mse_sliding_window, coverage_95_pi_sliding_window, width_95_pi_sliding_window, coverage_80_pi_sliding_window, \
-            width_80_pi_sliding_window = pipeline(values.values.reshape(-1, 1), cfg, model)
+            width_80_pi_sliding_window = pipeline(train_and_val[columnName].values.reshape(-1, 1),
+                                                  test[columnName].values.reshape(-1, 1), cfg, model)
         coverage_80_pi[i] = coverage_80_pi_sliding_window
         width_80_pi[i] = width_80_pi_sliding_window
         coverage_95_pi[i] = coverage_95_pi_sliding_window
@@ -365,11 +408,11 @@ def run_multiple_neural_networks(df, cfg):
     mean_width_95 = np.mean(width_95_pi, axis=0)
     mean_width_80 = np.mean(width_80_pi, axis=0)
     print('-----------------------------------------------------------')
-    print('MSE sliding window', mean_mse)
-    print('Coverage 95% PI sliding window', mean_coverage_95)
-    print('Width 95% PI sliding window', mean_width_95)
-    print('Coverage 80% PI sliding window', mean_coverage_80)
-    print('Width 80% PI sliding window', mean_width_80)
+    print('MSE sliding window', list(mean_mse))
+    print('Coverage 95% PI sliding window', list(mean_coverage_95))
+    print('Width 95% PI sliding window', list(mean_width_95))
+    print('Coverage 80% PI sliding window', list(mean_coverage_80))
+    print('Width 80% PI sliding window', list(mean_width_80))
 
     print('Average MSE', np.mean(mean_mse))
     print('Average coverage 95% PI', np.mean(mean_coverage_95))
@@ -380,15 +423,25 @@ def run_multiple_neural_networks(df, cfg):
 
 def main():
     df, cfg = load_data(data_set='avocado')
+    print(df)
     df['Date'] = pd.to_datetime(df['Date'])
     df.set_index('Date', inplace=True)
-    df = df.loc[:, ('AveragePrice', 'region')]
-    df = pd.pivot_table(df, values='AveragePrice', index=df.index, columns='region', aggfunc='first')
+    df = df.loc[:, ('AveragePrice', 'region', 'type')]
+    print(df)
+    df = df.pivot_table(index='Date', columns=['region', 'type'], aggfunc='mean')
+    df = df.fillna(method='backfill').dropna()
     df.sort_index(inplace=True)
     print(df)
-    if cfg['differencing']:
-        df = df.diff(periods=1).dropna()
-        df = df.diff(periods=12).dropna()
+    print(df.shape)
+    i = 0
+    for columnName, columnData in df.iteritems():
+        print(i)
+        i +=1
+
+
+    #if cfg['differencing']:
+    #    df = df.diff(periods=1, axis=0).dropna()
+        # df = df.diff(periods=12).dropna()
 
     #run_multiple_neural_networks(df, cfg)
     pipeline_baseline(df, cfg)

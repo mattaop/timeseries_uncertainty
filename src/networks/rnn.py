@@ -14,7 +14,7 @@ def build_model(train_x, train_y, cfg, val_x, val_y):
     number_of_epochs = 300
     batch_size = 64
     learning_rate = 0.001
-    patience = 1200
+    patience = 1500
     dropout_rate = 0.4
     number_of_recurrent_layers = 3
 

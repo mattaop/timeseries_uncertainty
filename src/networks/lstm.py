@@ -12,7 +12,7 @@ import numpy as np
 def build_model(train_x, train_y, cfg, val_x, val_y):
     nodes = 64
     number_of_epochs = 300
-    batch_size = 128
+    batch_size = 64
     learning_rate = 0.001
     patience = 3000
     dropout_rate = 0.4
@@ -21,7 +21,7 @@ def build_model(train_x, train_y, cfg, val_x, val_y):
     inp = Input(shape=(train_x.shape[1], train_x.shape[2]))
     x = inp
     for i in range(number_of_lstm_layers-1):
-        x = LSTM(nodes, return_sequences=True, kernel_regularizer=l2(0.001))(x)
+        x = LSTM(nodes, return_sequences=True)(x)
         x = Dropout(dropout_rate)(x)
     x = LSTM(nodes, return_sequences=False)(x)
     x = Dropout(dropout_rate)(x)

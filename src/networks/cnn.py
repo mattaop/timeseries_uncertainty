@@ -10,8 +10,8 @@ from keras_lookahead import Lookahead
 def build_model(train_x, train_y, cfg, val_x, val_y):
     print('cnn_model')
     filters = 64
-    number_of_epochs = 100
-    batch_size = 64
+    number_of_epochs = 300
+    batch_size = 32
     learning_rate = 0.001
     patience = 4000
     dropout_rate = 0.4
@@ -19,10 +19,6 @@ def build_model(train_x, train_y, cfg, val_x, val_y):
     inp = Input(shape=(train_x.shape[1], train_x.shape[2]))
 
     x = Conv1D(filters, kernel_size=2, activation='relu')(inp)
-    x = Dropout(dropout_rate)(x)
-    x = MaxPooling1D(pool_size=2)(x)
-
-    x = Conv1D(filters, kernel_size=2, activation='relu')(x)
     x = Dropout(dropout_rate)(x)
     x = MaxPooling1D(pool_size=2)(x)
 
@@ -47,7 +43,7 @@ def build_model(train_x, train_y, cfg, val_x, val_y):
 
     history = model.fit(train_x, train_y, epochs=number_of_epochs, batch_size=batch_size, callbacks=cb,
                         validation_data=(val_x, val_y),
-                        verbose=0)
+                        verbose=2)
 
     """
     plt.plot(np.log(history.history['loss']))

@@ -45,6 +45,7 @@ def load_data(data_set=None):
 
     elif data_set.lower() == 'avocado':
         df = load_raw_data(file_name='avocado.csv')
+        print(df)
 
     elif data_set.lower() == 'oslo_temperature' or data_set.lower() == 'oslo' or data_set.lower() == 'temperature':
         df = pd.read_csv('C://Users//mathi//PycharmProjects//timeseries_uncertainty//data//raw//OsloTemperature.csv',
@@ -81,7 +82,7 @@ def load_data(data_set=None):
 
 
 def main():
-    df, cfg = load_data(data_set='gunpoint')
+    df, cfg = load_data(data_set='avocado')
     print(df)
 
 

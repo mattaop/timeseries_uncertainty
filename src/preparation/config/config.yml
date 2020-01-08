@@ -1,5 +1,5 @@
 model: cnn # rnn, lstm, cnn
-data_source: oslo # m4, airpassengers, avocado, oslo, gunpoint
+data_source: airpassengers # m4, airpassengers, avocado, oslo, gunpoint
 data_path: 'C://Users//mathi//PycharmProjects//timeseries_uncertainty//data//raw//'
 number_of_nodes: 64
 number_of_epochs: 200
@@ -15,6 +15,6 @@ test_size: 0.2 # Fraction of data set used for testing
 multi_step_prediction: True # True / False if using predicted values to predict further or using actual test data
 differencing: 0 # If True, differences the data before fitting model, and then inverse it afterwards
 mc_dropout: True # If True, Dropout is applied at testing phase, in order to get an mc estimate of prediction interval
-autoencoder: 1
+autoencoder: 0
 load_weights_autoencoder: False
 external_features: False
