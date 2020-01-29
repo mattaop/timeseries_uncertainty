@@ -1,7 +1,7 @@
 numpy
 pandas
 sklearn
-tensorflow
+tensorflow==1.14.0
 keras
 pydataset
 pyyaml

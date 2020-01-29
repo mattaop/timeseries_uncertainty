@@ -1,5 +1,5 @@
-model: lstm # rnn, lstm, cnn
-data_source: oslo # m4, airpassengers, avocado, oslo, gunpoint
+model: rnn # rnn, lstm, cnn
+data_source: avocado # m4, airpassengers, avocado, oslo, gunpoint
 data_path: 'C://Users//mathi//PycharmProjects//timeseries_uncertainty//data//raw//'
 number_of_nodes: 64
 number_of_epochs: 200

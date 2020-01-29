@@ -10,12 +10,12 @@ def train_test_split(df, test_split=0.2):
 
 # split a univariate sequence into samples
 def split_sequence(sequence, cfg, num_features=1):
-    x = np.zeros([len(sequence)-cfg['sequence_length']-cfg['forecasting_horizon']+1, cfg['sequence_length'], 1])
-    y = np.zeros([len(sequence)-cfg['sequence_length']-cfg['forecasting_horizon']+1, cfg['forecasting_horizon']])
+    x = np.zeros([len(sequence)-cfg['sequence_length']-1+1, cfg['sequence_length'], 1])
+    y = np.zeros([len(sequence)-cfg['sequence_length']-1+1, 1])
     for i in range(len(sequence)):
         # find the end of this pattern
         end_ix = i + cfg['sequence_length']
-        out_end_ix = end_ix + cfg['forecasting_horizon']
+        out_end_ix = end_ix + 1
         # check if we are beyond the sequence
         if out_end_ix > len(sequence):
             break
