@@ -9,8 +9,9 @@ from statsmodels.graphics.tsaplots import plot_acf
 
 from src.preparation.load_data import load_data
 from src.dataclasses.Avocado import Avocado
+import matplotlib.dates as mdates
 
-df, cfg = load_data()
+df, cfg = load_data(data_set='avocado')
 
 """
 data = df
@@ -30,9 +31,23 @@ hm = sb.heatmap(cm, cbar=True, annot=True, square=True, fmt='.2f', annot_kws={'s
 #print(df)
 #print(df['region'].unique())
 #print(len(df['region'].unique()))
+print(df)
+print(df['region'].unique())
+series = df.loc[(df['region'] == 'TotalUS') & (df["type"] == 'organic')]
+series.index = pd.to_datetime(series['Date'])
+series = series.sort_index()
+print(series)
 
-series = df.loc[(df['region'] == 'Albany') & (df["type"] == 'conventional')]
-#print(series)
+fig = plt.figure()
+ax = fig.gca()
+ax.plot(series['AveragePrice'])
+plt.title('Avocado price for conventional avocado in Albany')
+plt.ylabel('Price')
+plt.xlabel('Date')
+ax.set_xticks(series.index[::52])
+ax.set_xticklabels(series.index[::52].date)
+plt.show()
+
 series.index = pd.to_datetime(series['Date'])
 
 series_1 = series['AveragePrice']

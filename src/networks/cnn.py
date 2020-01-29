@@ -10,7 +10,7 @@ from keras_lookahead import Lookahead
 def build_model(train_x, train_y, cfg, val_x, val_y):
     print('cnn_model')
     filters = 64
-    number_of_epochs = 300
+    number_of_epochs = 100
     batch_size = 32
     learning_rate = 0.001
     patience = 4000
@@ -20,15 +20,15 @@ def build_model(train_x, train_y, cfg, val_x, val_y):
 
     x = Conv1D(filters, kernel_size=2, activation='relu')(inp)
     x = Dropout(dropout_rate)(x)
-    x = MaxPooling1D(pool_size=2)(x)
+    # x = MaxPooling1D(pool_size=2)(x)
 
-    x = Conv1D(filters, kernel_size=2, activation='relu')(x)
-    x = Dropout(dropout_rate)(x)
-    x = MaxPooling1D(pool_size=2)(x)
+    #x = Conv1D(filters, kernel_size=2, activation='relu')(x)
+    #x = Dropout(dropout_rate)(x)
+    #x = MaxPooling1D(pool_size=2)(x)
 
-    x = Conv1D(filters, kernel_size=2, activation='relu')(x)
-    x = Dropout(dropout_rate)(x)
-    x = MaxPooling1D(pool_size=2)(x)
+    #x = Conv1D(filters, kernel_size=2, activation='relu')(x)
+    #x = Dropout(dropout_rate)(x)
+    #x = MaxPooling1D(pool_size=2)(x)
 
     x = Flatten()(x)
     x = Dense(64, activation='relu')(x)

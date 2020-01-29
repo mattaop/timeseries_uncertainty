@@ -11,12 +11,12 @@ import numpy as np
 
 def build_model(train_x, train_y, cfg, val_x, val_y):
     nodes = 64
-    number_of_epochs = 300
+    number_of_epochs = 50
     batch_size = 64
     learning_rate = 0.001
     patience = 3000
     dropout_rate = 0.4
-    number_of_lstm_layers = 3
+    number_of_lstm_layers = 1
 
     inp = Input(shape=(train_x.shape[1], train_x.shape[2]))
     x = inp
