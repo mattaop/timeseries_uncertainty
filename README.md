@@ -1,13 +1,29 @@
 # Forecasting Uncertainty in Neural Networks With Dropout
 Release version 1.0: 29.01.2020
 
-### How to install requirements
-Create an environment, activate and install requirements:
+### Requirements
+Dependencies necessary to run the code:
+```bash
+numpy
+pandas
+sklearn
+tensorflow
+keras
+pydataset
+pyyaml
+statsmodels
+tqdm
+keras-rectified-adam
+keras-lookahead
+seaborn
+pmdarima
+```
+
+Installation can be done manually or by creating an environment, activate it and install requirements:
 ```bash
 conda create -n [name_of_environment] python=3.6
 conda activate [name_of_environment]
 pip install -r requirements.txt
-python -m pip install -r requirements.txt`?
 ```
 
 ### Folder structure
@@ -47,7 +63,16 @@ This folder structure required to run the project without any modifications:
 ```
 
 ### Data sets
-In order to run the code, one have to download the data sets, and place it according to the folder structure. The data sets can be found and downloaded here:
+In order to run the code, one have to download the data sets, and place it according to the following folder structure and name conventions:
+```bash
+|---- data  # Folder for data sets
+|     |----- raw  # Datasets requiered to train the models
+|            |---- AirPassengers.csv
+|            |---- avocado.csv
+|            |---- OsloTemperature.csv
+``` 
+
+The data sets can be found and downloaded here:
 
 AirPassengers data set: https://www.kaggle.com/chirag19/air-passengers
 
